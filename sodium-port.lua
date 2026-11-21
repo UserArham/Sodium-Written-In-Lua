@@ -1,29 +1,9 @@
 
---[[
-    Sodium
-    Version: 0.2.2
-    Platform: Eaglercraft 26.2 / 26.3
-    Runtime: Zeus Lua 5.4
-
-    FPS COLOR SYSTEM:
-    66+ FPS  = Blue
-    50-65    = Green
-    25-49    = Yellow
-    18-24    = Orange
-    0-17     = Red
-]]
-
--- ============================================
--- MOD INFORMATION
--- ============================================
-
-mod.info({
-    name = "Sodium",
-    id = "sodium",
-    version = "0.2.2",
-    author = "UserArham",
-    description = "Performance settings and FPS HUD"
-})
+-- name: Sodium
+-- id: sodium
+-- version: 0.2.3
+-- author: UserArham
+-- description: Performance settings and FPS HUD for Eaglercraft 26.2 and 26.3
 
 -- ============================================
 -- ORIGINAL GAME SETTINGS
@@ -37,38 +17,54 @@ local original = {
 }
 
 -- ============================================
--- MOD SETTINGS
+-- SETTINGS
 -- ============================================
 
-settings.toggle("enabled", "Enable Sodium", true)
-settings.toggle("fpsHud", "Show FPS Counter", true)
-settings.toggle("showBranding", "Show Sodium Branding", true)
-settings.toggle("reduceFov", "Reduce FOV Effects", true)
-settings.toggle("disableBobbing", "Disable View Bobbing", false)
+settings.toggle("enabled", {
+    label = "Enable Sodium",
+    default = true
+})
 
-settings.slider(
-    "renderDistance",
-    "Render Distance",
-    2,
-    32,
-    6,
-    1
-)
+settings.toggle("fpsHud", {
+    label = "Show FPS Counter",
+    default = true
+})
 
-settings.slider(
-    "fpsLimit",
-    "FPS Limit",
-    10,
-    260,
-    120,
-    10
-)
+settings.toggle("showBranding", {
+    label = "Show Sodium Branding",
+    default = true
+})
 
-settings.color(
-    "hudColor",
-    "HUD Color",
-    0xFF55CCFF
-)
+settings.toggle("reduceFov", {
+    label = "Reduce FOV Effects",
+    default = true
+})
+
+settings.toggle("disableBobbing", {
+    label = "Disable View Bobbing",
+    default = false
+})
+
+settings.slider("renderDistance", {
+    label = "Render Distance",
+    min = 2,
+    max = 32,
+    step = 1,
+    default = 6
+})
+
+settings.slider("fpsLimit", {
+    label = "FPS Limit",
+    min = 10,
+    max = 260,
+    step = 10,
+    default = 120
+})
+
+settings.color("hudColor", {
+    label = "HUD Color",
+    default = 0xFF55CCFF
+})
 
 -- ============================================
 -- PERFORMANCE STATE
@@ -101,41 +97,29 @@ local function getFPSColor(fps)
 end
 
 -- ============================================
--- RESTORE ORIGINAL SETTINGS
+-- RESTORE ORIGINAL OPTIONS
 -- ============================================
 
 local function restoreOptions()
     if original.renderDistance ~= nil then
-        game.setOption(
-            "renderDistance",
-            original.renderDistance
-        )
+        game.setOption("renderDistance", original.renderDistance)
     end
 
     if original.framerateLimit ~= nil then
-        game.setOption(
-            "framerateLimit",
-            original.framerateLimit
-        )
+        game.setOption("framerateLimit", original.framerateLimit)
     end
 
     if original.viewBobbing ~= nil then
-        game.setOption(
-            "viewBobbing",
-            original.viewBobbing
-        )
+        game.setOption("viewBobbing", original.viewBobbing)
     end
 
     if original.fovEffects ~= nil then
-        game.setOption(
-            "fovEffects",
-            original.fovEffects
-        )
+        game.setOption("fovEffects", original.fovEffects)
     end
 end
 
 -- ============================================
--- APPLY PERFORMANCE SETTINGS
+-- APPLY SETTINGS
 -- ============================================
 
 local function applySettings()
@@ -147,19 +131,15 @@ local function applySettings()
 
     state.enabled = true
 
-    if settings.renderDistance ~= nil then
-        game.setOption(
-            "renderDistance",
-            settings.renderDistance
-        )
-    end
+    game.setOption(
+        "renderDistance",
+        settings.renderDistance
+    )
 
-    if settings.fpsLimit ~= nil then
-        game.setOption(
-            "framerateLimit",
-            settings.fpsLimit
-        )
-    end
+    game.setOption(
+        "framerateLimit",
+        settings.fpsLimit
+    )
 
     if settings.disableBobbing then
         game.setOption("viewBobbing", false)
@@ -181,7 +161,7 @@ local function applySettings()
 end
 
 -- ============================================
--- FPS SAMPLING
+-- FPS UPDATE
 -- ============================================
 
 local function updatePerformance(dt)
@@ -195,7 +175,7 @@ local function updatePerformance(dt)
 
     state.sampleTimer = state.sampleTimer + dt
 
-    -- Sample FPS four times per second.
+    -- Update four times per second.
     if state.sampleTimer < 0.25 then
         return
     end
@@ -223,7 +203,7 @@ on("frame", function(dt)
 end)
 
 -- ============================================
--- HUD
+-- FPS HUD
 -- ============================================
 
 hud.add("sodium_hud", function(ctx)
@@ -240,18 +220,14 @@ hud.add("sodium_hud", function(ctx)
     -- Sodium branding
     if settings.showBranding then
         ctx:rect(
-            8,
-            8,
-            150,
-            24,
+            8, 8, 150, 24,
             "#AA101820"
         )
 
         ctx:text(
             "Sodium",
-            14,
-            13,
-            "#55CCFF"
+            14, 13,
+            settings.hudColor
         )
 
         y = 39
@@ -262,17 +238,13 @@ hud.add("sodium_hud", function(ctx)
         local fpsColor = getFPSColor(state.fps)
 
         ctx:rect(
-            8,
-            y,
-            150,
-            43,
+            8, y, 150, 43,
             "#AA101820"
         )
 
         ctx:text(
             "FPS: " .. tostring(state.fps),
-            14,
-            y + 5,
+            14, y + 5,
             fpsColor
         )
 
@@ -281,8 +253,7 @@ hud.add("sodium_hud", function(ctx)
                 "Frame: %.2f ms",
                 state.frameTime
             ),
-            14,
-            y + 22,
+            14, y + 22,
             "#FFFFFF"
         )
     end
@@ -299,12 +270,10 @@ commands.register(
 
         if action == "on" then
             settings.set("enabled", true)
-            applySettings()
             chat.print("§bSodium enabled.")
 
         elseif action == "off" then
             settings.set("enabled", false)
-            applySettings()
             chat.print("§cSodium disabled.")
 
         elseif action == "fps" then
@@ -330,7 +299,7 @@ commands.register(
             chat.print("§aSodium settings applied.")
 
         elseif action == "info" then
-            chat.print("§bSodium v0.2.2")
+            chat.print("§bSodium v0.2.3")
             chat.print("§7Performance settings and FPS HUD")
 
         else
@@ -350,12 +319,12 @@ commands.register(
 -- SETTINGS CHANGE LISTENER
 -- ============================================
 
-settings.onChange(function(key, value)
+settings.onChange(function(key, value, old)
     applySettings()
 end)
 
 -- ============================================
--- MOD UNLOAD
+-- UNLOAD
 -- ============================================
 
 on("unload", function()
@@ -366,29 +335,31 @@ end)
 -- EXPORTED API
 -- ============================================
 
-mod.export("getFPS", function()
-    return state.fps
-end)
+mod.export = {
+    getFPS = function()
+        return state.fps
+    end,
 
-mod.export("getAverageFPS", function()
-    return state.averageFPS
-end)
+    getAverageFPS = function()
+        return state.averageFPS
+    end,
 
-mod.export("getFrameTime", function()
-    return state.frameTime
-end)
+    getFrameTime = function()
+        return state.frameTime
+    end,
 
-mod.export("isEnabled", function()
-    return state.enabled
-end)
+    isEnabled = function()
+        return state.enabled
+    end,
 
-mod.export("getFPSColor", function()
-    return getFPSColor(state.fps)
-end)
+    getFPSColor = function()
+        return getFPSColor(state.fps)
+    end,
 
-mod.export("apply", function()
-    applySettings()
-end)
+    apply = function()
+        applySettings()
+    end
+}
 
 -- ============================================
 -- INITIALIZATION
@@ -396,6 +367,5 @@ end)
 
 applySettings()
 
-chat.print("§bSodium v0.2.2 loaded!")
+chat.print("§bSodium v0.2.3 loaded!")
 chat.print("§7Performance settings initialized.")
-chat.print("§7FPS color system initialized.")
