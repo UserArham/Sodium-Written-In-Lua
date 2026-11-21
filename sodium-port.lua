@@ -1,111 +1,105 @@
 
 -- name: Sodium
 -- id: sodium
--- version: 0.3.1
+-- version: 0.3.2
 -- author: UserArham
--- description: Performance optimization and FPS monitoring
+-- description: Performance settings, FPS monitoring, and optimization tools for Eaglercraft.
+-- permissions:
 
--- ============================================
--- SODIUM 0.3.1
--- ============================================
+--------------------------------------------------
+-- SODIUM v0.3.2
+-- Eaglercraft 26.2 / 26.3
+-- Zeus Lua 5.4
+--------------------------------------------------
 
-local VERSION = "0.3.1"
-local MAX_LOG_SAMPLES = 600
-local SAMPLE_INTERVAL = 1.0
+local MOD_NAME = "Sodium"
+local MOD_VERSION = "0.3.2"
 
--- ============================================
--- ORIGINAL SETTINGS
--- ============================================
-
-local original = {
-    renderDistance = game.option("renderDistance"),
-    framerateLimit = game.option("framerateLimit"),
-    viewBobbing = game.option("viewBobbing"),
-    fovEffects = game.option("fovEffects")
-}
-
--- ============================================
+--------------------------------------------------
 -- SETTINGS
--- ============================================
+--------------------------------------------------
 
 settings.toggle("enabled", {
     label = "Enable Sodium",
+    description = "Enable or disable Sodium.",
     default = true
 })
 
 settings.toggle("fpsHud", {
-    label = "Show FPS Counter",
+    label = "Show FPS HUD",
+    description = "Display your current FPS.",
     default = true
 })
 
 settings.toggle("showBranding", {
-    label = "Show Sodium Branding",
+    label = "Show Sodium branding",
+    description = "Display Sodium on the HUD.",
     default = true
 })
 
 settings.toggle("reduceFov", {
-    label = "Reduce FOV Effects",
-    default = true
+    label = "Reduce FOV effects",
+    description = "Reduce field of view effects.",
+    default = false
 })
 
 settings.toggle("disableBobbing", {
-    label = "Disable View Bobbing",
+    label = "Disable view bobbing",
+    description = "Disable camera view bobbing.",
     default = false
 })
 
 settings.toggle("adaptiveRenderDistance", {
-    label = "Adaptive Render Distance",
+    label = "Adaptive render distance",
+    description = "Adjust render distance based on FPS.",
     default = false
 })
 
 settings.slider("renderDistance", {
-    label = "Maximum Render Distance",
+    label = "Target render distance",
+    description = "Render distance used by Sodium optimization presets.",
     min = 2,
     max = 32,
     step = 1,
-    default = 6
+    default = 12
 })
 
 settings.slider("fpsLimit", {
-    label = "FPS Limit",
+    label = "FPS limit",
+    description = "Target frame rate limit.",
     min = 10,
     max = 260,
     step = 10,
-    default = 120
+    default = 260
 })
 
 settings.color("hudColor", {
-    label = "HUD Color",
-    default = "#55CCFF"
+    label = "HUD color",
+    description = "Color used for Sodium branding.",
+    default = "#FFFFFF"
 })
 
--- ============================================
--- PERFORMANCE STATE
--- ============================================
+--------------------------------------------------
+-- SETTINGS ACCESS
+--------------------------------------------------
 
-local state = {
-    fps = 0,
-    averageFPS = 0,
-    minFPS = nil,
-    maxFPS = 0,
-    frameTime = 0,
+local function getSetting(key, fallback)
+    local value = settings.get(key)
 
-    enabled = true,
-    sampleTimer = 0,
+    if value == nil then
+        return fallback
+    end
 
-    adaptiveDistance = settings.renderDistance,
-    lowSamples = 0,
-    highSamples = 0,
+    return value
+end
 
-    logCount = 0,
-    profile = "balanced"
-}
+local function isEnabled()
+    return getSetting("enabled", true)
+end
 
-local performanceLog = {}
-
--- ============================================
--- FPS COLORS
--- ============================================
+--------------------------------------------------
+-- FPS COLOR SYSTEM
+--------------------------------------------------
 
 local function getFPSColor(fps)
     if fps >= 66 then
@@ -121,568 +115,593 @@ local function getFPSColor(fps)
     end
 end
 
--- ============================================
--- RESTORE ORIGINAL SETTINGS
--- ============================================
+--------------------------------------------------
+-- PERFORMANCE DATA
+--------------------------------------------------
 
-local function restoreOptions()
-    if original.renderDistance ~= nil then
-        game.setOption("renderDistance", original.renderDistance)
+local currentFPS = 0
+local minimumFPS = nil
+local maximumFPS = 0
+local totalFPS = 0
+local sampleCount = 0
+
+local performanceLog = {}
+local MAX_LOG_ENTRIES = 600
+
+local lastSampleTime = 0
+local adaptiveTimer = 0
+local autoOptimize = false
+
+local function getAverageFPS()
+    if sampleCount == 0 then
+        return 0
     end
 
-    if original.framerateLimit ~= nil then
-        game.setOption("framerateLimit", original.framerateLimit)
-    end
-
-    if original.viewBobbing ~= nil then
-        game.setOption("viewBobbing", original.viewBobbing)
-    end
-
-    if original.fovEffects ~= nil then
-        game.setOption("fovEffects", original.fovEffects)
-    end
+    return math.floor(totalFPS / sampleCount + 0.5)
 end
 
--- ============================================
--- APPLY SETTINGS
--- ============================================
+local function getMinimumFPS()
+    return minimumFPS or 0
+end
 
-local function applySettings()
-    if not settings.enabled then
-        restoreOptions()
-        state.enabled = false
+local function getMaximumFPS()
+    return maximumFPS
+end
+
+--------------------------------------------------
+-- TIME FORMATTING
+--------------------------------------------------
+
+local function getTimestamp()
+    return os.date("%Y-%m-%d %H:%M:%S")
+end
+
+--------------------------------------------------
+-- FPS MEASUREMENT
+--------------------------------------------------
+
+local function recordFPS()
+    if not game.inWorld() then
         return
     end
 
-    state.enabled = true
+    local fps = game.fps()
 
-    if not settings.adaptiveRenderDistance then
-        game.setOption(
-            "renderDistance",
-            settings.renderDistance
-        )
-    else
-        game.setOption(
-            "renderDistance",
-            state.adaptiveDistance
-        )
-    end
-
-    game.setOption(
-        "framerateLimit",
-        settings.fpsLimit
-    )
-
-    if settings.disableBobbing then
-        game.setOption("viewBobbing", false)
-    elseif original.viewBobbing ~= nil then
-        game.setOption("viewBobbing", original.viewBobbing)
-    end
-
-    if settings.reduceFov then
-        game.setOption("fovEffects", 0)
-    elseif original.fovEffects ~= nil then
-        game.setOption("fovEffects", original.fovEffects)
-    end
-end
-
--- ============================================
--- OPTIMIZATION PROFILES
--- ============================================
-
-local function setProfile(profile)
-    if profile == "low" then
-        settings.set("adaptiveRenderDistance", false)
-        settings.set("renderDistance", 4)
-        settings.set("fpsLimit", 120)
-        settings.set("reduceFov", true)
-        settings.set("disableBobbing", true)
-
-        state.profile = "low"
-
-    elseif profile == "balanced" then
-        settings.set("adaptiveRenderDistance", true)
-        settings.set("renderDistance", 8)
-        settings.set("fpsLimit", 120)
-        settings.set("reduceFov", true)
-        settings.set("disableBobbing", false)
-
-        state.adaptiveDistance = 6
-        state.profile = "balanced"
-
-    elseif profile == "high" then
-        settings.set("adaptiveRenderDistance", false)
-        settings.set("renderDistance", 16)
-        settings.set("fpsLimit", 260)
-        settings.set("reduceFov", false)
-        settings.set("disableBobbing", false)
-
-        state.profile = "high"
-
-    else
-        return false
-    end
-
-    applySettings()
-    return true
-end
-
--- ============================================
--- ADAPTIVE RENDER DISTANCE
--- ============================================
-
-local function updateAdaptiveDistance()
-    if not settings.adaptiveRenderDistance then
+    if type(fps) ~= "number" then
         return
     end
 
-    local target = settings.renderDistance
-    local current = state.adaptiveDistance
+    fps = math.max(0, math.floor(fps))
 
-    if state.averageFPS < 25 then
-        state.lowSamples = state.lowSamples + 1
-        state.highSamples = 0
+    currentFPS = fps
+    minimumFPS = math.min(minimumFPS or fps, fps)
+    maximumFPS = math.max(maximumFPS, fps)
 
-        if state.lowSamples >= 3 then
-            if current > 2 then
-                current = current - 1
-                state.adaptiveDistance = current
+    totalFPS = totalFPS + fps
+    sampleCount = sampleCount + 1
 
-                game.setOption("renderDistance", current)
-            end
-
-            state.lowSamples = 0
-        end
-
-    elseif state.averageFPS >= 60 then
-        state.highSamples = state.highSamples + 1
-        state.lowSamples = 0
-
-        if state.highSamples >= 8 then
-            if current < target then
-                current = current + 1
-                state.adaptiveDistance = current
-
-                game.setOption("renderDistance", current)
-            end
-
-            state.highSamples = 0
-        end
-
-    else
-        state.lowSamples = 0
-        state.highSamples = 0
-    end
-end
-
--- ============================================
--- PERFORMANCE LOG
--- ============================================
-
-local function addPerformanceSample()
-    local sample = {
-        timestamp = os.date("%Y-%m-%d %H:%M:%S"),
-        fps = state.fps,
-        averageFPS = state.averageFPS,
-        frameTime = state.frameTime,
-        renderDistance = game.option("renderDistance") or 0,
-        fpsLimit = game.option("framerateLimit") or 0
+    local entry = {
+        time = getTimestamp(),
+        fps = fps
     }
 
-    performanceLog[#performanceLog + 1] = sample
+    table.insert(performanceLog, entry)
 
-    if #performanceLog > MAX_LOG_SAMPLES then
+    if #performanceLog > MAX_LOG_ENTRIES then
         table.remove(performanceLog, 1)
     end
-
-    state.logCount = #performanceLog
 end
 
-local function csvEscape(value)
-    local text = tostring(value)
-    text = string.gsub(text, '"', '""')
-    return '"' .. text .. '"'
+--------------------------------------------------
+-- REFRESH FPS
+--------------------------------------------------
+
+local function refreshFPS()
+    currentFPS = game.inWorld() and game.fps() or 0
+
+    minimumFPS = nil
+    maximumFPS = 0
+    totalFPS = 0
+    sampleCount = 0
+
+    performanceLog = {}
+    lastSampleTime = os.clock()
+
+    if game.inWorld() then
+        local fps = math.max(0, math.floor(currentFPS))
+
+        minimumFPS = fps
+        maximumFPS = fps
+        totalFPS = fps
+        sampleCount = 1
+
+        table.insert(performanceLog, {
+            time = getTimestamp(),
+            fps = fps
+        })
+    end
+
+    chat.print("[Sodium] FPS measurements refreshed.")
 end
 
-local function createCSV()
+--------------------------------------------------
+-- PERFORMANCE LOG EXPORT
+--------------------------------------------------
+
+local function exportPerformanceLog()
     local lines = {}
 
-    lines[#lines + 1] =
-        "Timestamp,FPS,Average FPS,Frame Time (ms),Render Distance,FPS Limit"
+    table.insert(lines, "Sodium Performance Log")
+    table.insert(lines, "Version: " .. MOD_VERSION)
+    table.insert(lines, "Date: " .. getTimestamp())
+    table.insert(lines, "")
+    table.insert(lines, "FPS Statistics")
+    table.insert(lines, "Current FPS: " .. tostring(currentFPS))
+    table.insert(lines, "Minimum FPS: " .. tostring(getMinimumFPS()))
+    table.insert(lines, "Maximum FPS: " .. tostring(getMaximumFPS()))
+    table.insert(lines, "Average FPS: " .. tostring(getAverageFPS()))
+    table.insert(lines, "Samples: " .. tostring(sampleCount))
+    table.insert(lines, "")
+    table.insert(lines, "Recorded Measurements")
+    table.insert(lines, "Timestamp | FPS")
+    table.insert(lines, "---------------------------")
 
-    for _, sample in ipairs(performanceLog) do
-        lines[#lines + 1] = table.concat({
-            csvEscape(sample.timestamp),
-            csvEscape(sample.fps),
-            csvEscape(string.format("%.2f", sample.averageFPS)),
-            csvEscape(string.format("%.2f", sample.frameTime)),
-            csvEscape(sample.renderDistance),
-            csvEscape(sample.fpsLimit)
-        }, ",")
+    for _, entry in ipairs(performanceLog) do
+        table.insert(
+            lines,
+            tostring(entry.time) .. " | " .. tostring(entry.fps)
+        )
     end
 
-    return table.concat(lines, "\n")
-end
-
-local function downloadPerformanceLog()
-    if #performanceLog == 0 then
-        chat.print("§cSodium: No performance data collected yet.")
-        return
-    end
-
-    local filename =
-        "sodium-performance-" ..
-        os.date("%Y%m%d-%H%M%S") ..
-        ".csv"
+    local output = table.concat(lines, "\n")
 
     files.save(
-        filename,
-        createCSV(),
-        "text/csv"
+        "Sodium-Performance-Log.txt",
+        output,
+        "text/plain"
     )
 
-    chat.print("§aSodium: Performance log exported.")
-    chat.print("§7Samples: " .. tostring(#performanceLog))
-    chat.print("§7File: " .. filename)
+    chat.print("[Sodium] Performance log exported as TXT.")
 end
 
--- ============================================
--- PERFORMANCE SAMPLING
--- ============================================
+--------------------------------------------------
+-- CLEAR PERFORMANCE LOG
+--------------------------------------------------
 
-local function updatePerformance(dt)
-    if not state.enabled then
-        return
-    end
+local function clearPerformanceLog()
+    performanceLog = {}
 
-    if not game.inWorld() or game.isPaused() then
-        return
-    end
+    chat.print("[Sodium] Performance log cleared.")
+end
 
-    state.sampleTimer = state.sampleTimer + (tonumber(dt) or 0)
+--------------------------------------------------
+-- PERFORMANCE STATUS
+--------------------------------------------------
 
-    if state.sampleTimer < SAMPLE_INTERVAL then
-        return
-    end
+local function showPerformanceStatus()
+    chat.print("----- Sodium Performance -----")
+    chat.print("Current FPS: " .. tostring(currentFPS))
+    chat.print("Minimum FPS: " .. tostring(getMinimumFPS()))
+    chat.print("Maximum FPS: " .. tostring(getMaximumFPS()))
+    chat.print("Average FPS: " .. tostring(getAverageFPS()))
+    chat.print("Samples: " .. tostring(sampleCount))
+    chat.print("Log entries: " .. tostring(#performanceLog))
+    chat.print("------------------------------")
+end
 
-    state.sampleTimer = 0
+--------------------------------------------------
+-- GAME OPTION HELPERS
+--------------------------------------------------
 
-    local currentFPS = game.fps()
+local function setGameOption(name, value)
+    local success, result = pcall(function()
+        game.setOption(name, value)
+    end)
 
-    if not currentFPS or currentFPS <= 0 then
-        return
-    end
+    return success and result ~= false
+end
 
-    currentFPS = math.floor(currentFPS + 0.5)
+local function applyBasicOptimizations()
+    setGameOption("viewBobbing", false)
+    setGameOption("fovEffects", 0)
+    setGameOption(
+        "renderDistance",
+        getSetting("renderDistance", 12)
+    )
+    setGameOption(
+        "framerateLimit",
+        getSetting("fpsLimit", 260)
+    )
+end
 
-    state.fps = currentFPS
-    state.frameTime = 1000 / currentFPS
+--------------------------------------------------
+-- OPTIMIZATION PRESETS
+--------------------------------------------------
 
-    if state.minFPS == nil or currentFPS < state.minFPS then
-        state.minFPS = currentFPS
-    end
+local function applyPreset(name)
+    local renderDistance = 12
+    local fpsLimit = 260
+    local bobbing = false
+    local fovEffects = 0
 
-    if currentFPS > state.maxFPS then
-        state.maxFPS = currentFPS
-    end
+    if name == "low" then
+        renderDistance = 4
+        fpsLimit = 60
+        bobbing = false
+        fovEffects = 0
 
-    if state.averageFPS == 0 then
-        state.averageFPS = currentFPS
+    elseif name == "balanced" then
+        renderDistance = 8
+        fpsLimit = 120
+        bobbing = false
+        fovEffects = 0
+
+    elseif name == "high" then
+        renderDistance = 16
+        fpsLimit = 260
+        bobbing = true
+        fovEffects = 1
+
+    elseif name == "apply" then
+        renderDistance = getSetting("renderDistance", 12)
+        fpsLimit = getSetting("fpsLimit", 260)
+        bobbing = not getSetting("disableBobbing", false)
+
+        if getSetting("reduceFov", false) then
+            fovEffects = 0
+        else
+            fovEffects = 1
+        end
+
     else
-        state.averageFPS =
-            state.averageFPS * 0.85 +
-            currentFPS * 0.15
+        chat.print("[Sodium] Unknown optimization preset.")
+        return
     end
 
-    updateAdaptiveDistance()
-    addPerformanceSample()
+    setGameOption("renderDistance", renderDistance)
+    setGameOption("framerateLimit", fpsLimit)
+    setGameOption("viewBobbing", bobbing)
+    setGameOption("fovEffects", fovEffects)
+
+    chat.print("[Sodium] Applied " .. name .. " optimization preset.")
+    chat.print("[Sodium] Render distance: " .. renderDistance)
+    chat.print("[Sodium] FPS limit: " .. fpsLimit)
 end
 
-on("frame", function(dt)
-    updatePerformance(dt)
-end)
+--------------------------------------------------
+-- RESET OPTIMIZATION OPTIONS
+--------------------------------------------------
 
--- ============================================
--- GAMEPLAY HUD
--- ============================================
+local function resetOptimizations()
+    setGameOption("renderDistance", 12)
+    setGameOption("framerateLimit", 260)
+    setGameOption("viewBobbing", true)
+    setGameOption("fovEffects", 1)
 
-hud.add("sodium_hud", function(ctx)
-    if not settings.enabled or not game.inWorld() then
+    chat.print("[Sodium] Optimization options reset.")
+end
+
+--------------------------------------------------
+-- ADAPTIVE RENDER DISTANCE
+--------------------------------------------------
+
+local adaptiveRenderDistance = 12
+
+local function updateAdaptiveRenderDistance()
+    if not isEnabled() then
         return
     end
 
-    if not settings.fpsHud and not settings.showBranding then
+    if not getSetting("adaptiveRenderDistance", false) then
         return
     end
 
-    local y = 10
-
-    if settings.showBranding then
-        ctx:rect(8, 8, 165, 24, "#AA101820")
-
-        -- Gameplay branding is simply Sodium.
-        ctx:text("Sodium", 14, 13, settings.hudColor)
-
-        y = 39
+    if not game.inWorld() then
+        return
     end
 
-    if settings.fpsHud then
-        ctx:rect(8, y, 165, 78, "#AA101820")
+    local fps = currentFPS
+    local newDistance = adaptiveRenderDistance
 
+    if fps < 25 then
+        newDistance = math.max(2, adaptiveRenderDistance - 2)
+    elseif fps < 40 then
+        newDistance = math.max(2, adaptiveRenderDistance - 1)
+    elseif fps >= 90 then
+        newDistance = math.min(32, adaptiveRenderDistance + 1)
+    end
+
+    if newDistance ~= adaptiveRenderDistance then
+        adaptiveRenderDistance = newDistance
+        setGameOption("renderDistance", adaptiveRenderDistance)
+    end
+end
+
+--------------------------------------------------
+-- AUTOMATIC OPTIMIZATION
+--------------------------------------------------
+
+local function updateAutomaticOptimization()
+    if not autoOptimize then
+        return
+    end
+
+    if currentFPS < 25 then
+        setGameOption("renderDistance", 4)
+    elseif currentFPS < 40 then
+        setGameOption("renderDistance", 6)
+    elseif currentFPS < 60 then
+        setGameOption("renderDistance", 8)
+    elseif currentFPS >= 100 then
+        setGameOption("renderDistance", 12)
+    end
+end
+
+--------------------------------------------------
+-- FPS HUD
+--------------------------------------------------
+
+hud.add("sodium_fps", function(ctx)
+    if not isEnabled() then
+        return
+    end
+
+    if not game.inWorld() then
+        return
+    end
+
+    local y = 4
+
+    if getSetting("showBranding", true) then
         ctx:text(
-            "FPS: " .. tostring(state.fps),
-            14, y + 5,
-            getFPSColor(state.fps)
+            MOD_NAME,
+            4,
+            y,
+            getSetting("hudColor", "#FFFFFF")
         )
 
-        ctx:text(
-            string.format("Average: %.1f", state.averageFPS),
-            14, y + 22,
-            "#FFFFFF"
-        )
+        y = y + 12
+    end
+
+    if getSetting("fpsHud", true) then
+        local fpsText = "FPS: " .. tostring(currentFPS)
 
         ctx:text(
-            string.format("Frame: %.2f ms", state.frameTime),
-            14, y + 39,
-            "#FFFFFF"
-        )
-
-        ctx:text(
-            "Render: " .. tostring(game.option("renderDistance") or "?"),
-            14, y + 56,
-            "#FFFFFF"
+            fpsText,
+            4,
+            y,
+            getFPSColor(currentFPS)
         )
     end
 end)
 
--- ============================================
--- /OPTIMIZE COMMAND
--- ============================================
+--------------------------------------------------
+-- MAIN TICK EVENT
+--------------------------------------------------
 
-commands.register(
-    "optimize",
-    function(args)
-        local action = args[1]
+on("tick", function()
+    if not isEnabled() then
+        return
+    end
 
-        if action == "apply" then
-            applySettings()
-            chat.print("§aSodium optimizations applied.")
+    if not game.inWorld() then
+        return
+    end
 
-        elseif action == "low" then
-            if setProfile("low") then
-                chat.print("§aLow performance profile applied.")
-            end
+    local now = os.clock()
 
-        elseif action == "balanced" then
-            if setProfile("balanced") then
-                chat.print("§aBalanced performance profile applied.")
-            end
+    if now - lastSampleTime >= 1 then
+        lastSampleTime = now
+        recordFPS()
 
-        elseif action == "high" then
-            if setProfile("high") then
-                chat.print("§aHigh render-distance profile applied.")
-            end
-
-        elseif action == "reset" then
-            restoreOptions()
-            state.profile = "custom"
-            chat.print("§eOriginal game options restored.")
-
-        elseif action == "status" then
-            chat.print("§bSodium Optimization Status")
-            chat.print("§7Profile: §f" .. state.profile)
-            chat.print("§7Render Distance: §f" ..
-                tostring(game.option("renderDistance")))
-            chat.print("§7FPS Limit: §f" ..
-                tostring(game.option("framerateLimit")))
-            chat.print("§7Adaptive Distance: §f" ..
-                tostring(settings.adaptiveRenderDistance))
-
-        else
-            chat.print("§bSodium Optimization Commands:")
-            chat.print("§f/optimize apply")
-            chat.print("§f/optimize low")
-            chat.print("§f/optimize balanced")
-            chat.print("§f/optimize high")
-            chat.print("§f/optimize reset")
-            chat.print("§f/optimize status")
+        if autoOptimize then
+            updateAutomaticOptimization()
         end
-    end,
-    "Sodium optimization commands"
-)
+    end
 
--- ============================================
+    if getSetting("adaptiveRenderDistance", false) then
+        adaptiveTimer = adaptiveTimer + 1
+
+        if adaptiveTimer >= 40 then
+            adaptiveTimer = 0
+            updateAdaptiveRenderDistance()
+        end
+    end
+end)
+
+--------------------------------------------------
 -- /PERFORMANCE COMMAND
--- ============================================
+--------------------------------------------------
 
-commands.register(
-    "performance",
-    function(args)
-        local action = args[1]
+commands.register("performance", function(args)
+    local action = args[1] or "status"
 
-        if action == "log" then
-            downloadPerformanceLog()
+    if action == "log" then
+        exportPerformanceLog()
 
-        elseif action == "clear" then
-            performanceLog = {}
-            state.logCount = 0
-            chat.print("§aSodium performance log cleared.")
+    elseif action == "clear" then
+        clearPerformanceLog()
 
-        elseif action == "status" then
-            chat.print("§bSodium Performance Status")
-            chat.print("§7FPS: §f" .. tostring(state.fps))
-            chat.print("§7Average: §f" ..
-                string.format("%.1f", state.averageFPS))
-            chat.print("§7Minimum: §f" .. tostring(state.minFPS or 0))
-            chat.print("§7Maximum: §f" .. tostring(state.maxFPS))
-            chat.print("§7Frame Time: §f" ..
-                string.format("%.2f ms", state.frameTime))
-            chat.print("§7Samples: §f" .. tostring(state.logCount))
+    elseif action == "status" then
+        showPerformanceStatus()
 
-        elseif action == "auto" then
-            local mode = args[2]
+    elseif action == "auto" then
+        local state = args[2]
 
-            if mode == "on" then
-                settings.set("adaptiveRenderDistance", true)
-                chat.print("§aAdaptive render distance enabled.")
+        if state == "on" then
+            autoOptimize = true
+            chat.print("[Sodium] Automatic optimization enabled.")
 
-            elseif mode == "off" then
-                settings.set("adaptiveRenderDistance", false)
-                chat.print("§cAdaptive render distance disabled.")
-
-            else
-                chat.print("§7Usage: /performance auto on|off")
-            end
+        elseif state == "off" then
+            autoOptimize = false
+            chat.print("[Sodium] Automatic optimization disabled.")
 
         else
-            chat.print("§bPerformance Commands:")
-            chat.print("§f/performance log")
-            chat.print("§f/performance clear")
-            chat.print("§f/performance status")
-            chat.print("§f/performance auto on")
-            chat.print("§f/performance auto off")
+            chat.print("Usage: /performance auto on|off")
         end
-    end,
-    "Sodium performance commands"
-)
 
--- ============================================
+    else
+        chat.print("----- Sodium Performance -----")
+        chat.print("/performance log")
+        chat.print("/performance clear")
+        chat.print("/performance status")
+        chat.print("/performance auto on|off")
+    end
+end, "Sodium performance monitoring commands")
+
+--------------------------------------------------
+-- /REFRESH COMMAND
+--------------------------------------------------
+
+commands.register("refresh", function(args)
+    local action = args[1]
+
+    if action == "fps" then
+        refreshFPS()
+    else
+        chat.print("Usage: /refresh fps")
+    end
+end, "Refresh Sodium measurements")
+
+--------------------------------------------------
+-- /OPTIMIZE COMMAND
+--------------------------------------------------
+
+commands.register("optimize", function(args)
+    local action = args[1] or "status"
+
+    if action == "apply" then
+        applyPreset("apply")
+
+    elseif action == "low" then
+        applyPreset("low")
+
+    elseif action == "balanced" then
+        applyPreset("balanced")
+
+    elseif action == "high" then
+        applyPreset("high")
+
+    elseif action == "reset" then
+        resetOptimizations()
+
+    elseif action == "status" then
+        chat.print("----- Sodium Optimization -----")
+        chat.print(
+            "Render distance: " ..
+            tostring(game.option("renderDistance"))
+        )
+        chat.print(
+            "FPS limit: " ..
+            tostring(game.option("framerateLimit"))
+        )
+        chat.print(
+            "View bobbing: " ..
+            tostring(game.option("viewBobbing"))
+        )
+        chat.print(
+            "FOV effects: " ..
+            tostring(game.option("fovEffects"))
+        )
+        chat.print("-------------------------------")
+
+    else
+        chat.print("----- Sodium Optimize -----")
+        chat.print("/optimize apply")
+        chat.print("/optimize low")
+        chat.print("/optimize balanced")
+        chat.print("/optimize high")
+        chat.print("/optimize reset")
+        chat.print("/optimize status")
+    end
+end, "Sodium optimization presets")
+
+--------------------------------------------------
 -- /SODIUM COMMAND
--- ============================================
+--------------------------------------------------
 
-commands.register(
-    "sodium",
-    function(args)
-        local action = args[1]
+commands.register("sodium", function(args)
+    local action = args[1] or "settings"
 
-        if action == "on" then
-            settings.set("enabled", true)
-            applySettings()
-            chat.print("§aSodium enabled.")
+    if action == "on" then
+        settings.set("enabled", true)
+        chat.print("[Sodium] Enabled.")
 
-        elseif action == "off" then
-            settings.set("enabled", false)
-            applySettings()
-            chat.print("§cSodium disabled.")
+    elseif action == "off" then
+        settings.set("enabled", false)
+        chat.print("[Sodium] Disabled.")
 
-        elseif action == "settings" then
-            settings.open()
+    elseif action == "settings" then
+        settings.open()
 
-        elseif action == "apply" then
-            applySettings()
-            chat.print("§aSodium settings applied.")
+    elseif action == "apply" then
+        applyPreset("apply")
 
-        elseif action == "version" then
-            chat.print("§bSodium " .. VERSION)
+    elseif action == "version" then
+        chat.print("Sodium " .. MOD_VERSION)
 
+    else
+        chat.print("----- Sodium -----")
+        chat.print("/sodium on")
+        chat.print("/sodium off")
+        chat.print("/sodium settings")
+        chat.print("/sodium apply")
+        chat.print("/sodium version")
+    end
+end, "Sodium main commands")
+
+--------------------------------------------------
+-- SETTINGS CHANGE HANDLER
+--------------------------------------------------
+
+settings.onChange(function(key, value)
+    if key == "enabled" then
+        if value then
+            chat.print("[Sodium] Enabled.")
         else
-            chat.print("§bSodium Commands:")
-            chat.print("§f/sodium on")
-            chat.print("§f/sodium off")
-            chat.print("§f/sodium settings")
-            chat.print("§f/sodium apply")
-            chat.print("§f/sodium version")
+            chat.print("[Sodium] Disabled.")
         end
-    end,
-    "Sodium commands"
-)
+    end
 
--- ============================================
--- SETTINGS CHANGE LISTENER
--- ============================================
-
-settings.onChange(function(key, value, old)
     if key == "renderDistance" then
-        state.adaptiveDistance = value
-        state.lowSamples = 0
-        state.highSamples = 0
+        adaptiveRenderDistance = value
     end
-
-    if key == "adaptiveRenderDistance" then
-        state.adaptiveDistance = settings.renderDistance
-        state.lowSamples = 0
-        state.highSamples = 0
-    end
-
-    applySettings()
 end)
 
--- ============================================
--- UNLOAD
--- ============================================
+--------------------------------------------------
+-- INITIALIZATION
+--------------------------------------------------
 
-on("unload", function()
-    restoreOptions()
-end)
+adaptiveRenderDistance = getSetting("renderDistance", 12)
+lastSampleTime = os.clock()
 
--- ============================================
--- EXPORTED API
--- ============================================
+if game.inWorld() then
+    currentFPS = game.fps()
+end
 
 mod.export = {
+    name = MOD_NAME,
+    version = MOD_VERSION,
+
     getFPS = function()
-        return state.fps
+        return currentFPS
     end,
 
     getAverageFPS = function()
-        return state.averageFPS
+        return getAverageFPS()
     end,
 
     getMinimumFPS = function()
-        return state.minFPS
+        return getMinimumFPS()
     end,
 
     getMaximumFPS = function()
-        return state.maxFPS
+        return getMaximumFPS()
     end,
 
-    getFrameTime = function()
-        return state.frameTime
-    end,
-
-    getFPSColor = function()
-        return getFPSColor(state.fps)
-    end,
-
-    getLogCount = function()
-        return state.logCount
-    end,
-
-    isEnabled = function()
-        return state.enabled
-    end,
-
-    apply = function()
-        applySettings()
+    refreshFPS = function()
+        refreshFPS()
     end
 }
 
--- ============================================
--- INITIALIZATION
--- ============================================
-
-applySettings()
-
-chat.print("§bSodium v" .. VERSION .. " loaded!")
-chat.print("§7Use /optimize for optimization profiles.")
-chat.print("§7Use /performance for performance tools.")
+chat.print("[Sodium] v" .. MOD_VERSION .. " loaded.")
