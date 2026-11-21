@@ -1,15 +1,13 @@
 
 -- name: Sodium
 -- id: sodium-eagler
--- version: 0.1.0
+-- version: 0.1.1
 -- author: UserArham
 -- description: Performance-focused settings and FPS HUD for Eaglercraft
--- permissions:
 -- homepage: https://eaglercraft.com
 -- license: Apache-2.0
 
-local VERSION = "0.1.0"
-local PREFIX = "#55CCFF"
+local VERSION = "0.1.1"
 
 -- ==========================================
 -- SODIUM SETTINGS
@@ -17,7 +15,7 @@ local PREFIX = "#55CCFF"
 
 settings.toggle("enabled", {
     label = "Sodium Enabled",
-    description = "Enable the Sodium performance HUD and settings",
+    description = "Enable or disable Sodium",
     default = true
 })
 
@@ -29,7 +27,7 @@ settings.toggle("fpsHud", {
 
 settings.toggle("showBranding", {
     label = "Show Branding",
-    description = "Display Sodium branding in the HUD",
+    description = "Display Sodium branding",
     default = true
 })
 
@@ -56,7 +54,7 @@ settings.slider("renderDistance", {
 
 settings.slider("fpsLimit", {
     label = "FPS Limit",
-    description = "Maximum game frame rate; 260 means unlimited",
+    description = "260 means unlimited",
     min = 10,
     max = 260,
     step = 10,
@@ -70,33 +68,83 @@ settings.color("hudColor", {
 })
 
 -- ==========================================
--- PERFORMANCE SETTINGS
+-- SAVE ORIGINAL GAME OPTIONS
+-- ==========================================
+
+local originalOptions = {
+    renderDistance = game.option("renderDistance"),
+    framerateLimit = game.option("framerateLimit"),
+    viewBobbing = game.option("viewBobbing"),
+    fovEffects = game.option("fovEffects")
+}
+
+-- ==========================================
+-- RESTORE ORIGINAL OPTIONS
+-- ==========================================
+
+local function restoreOptions()
+    game.setOption(
+        "renderDistance",
+        originalOptions.renderDistance
+    )
+
+    game.setOption(
+        "framerateLimit",
+        originalOptions.framerateLimit
+    )
+
+    game.setOption(
+        "viewBobbing",
+        originalOptions.viewBobbing
+    )
+
+    game.setOption(
+        "fovEffects",
+        originalOptions.fovEffects
+    )
+end
+
+-- ==========================================
+-- APPLY SODIUM SETTINGS
 -- ==========================================
 
 local function applySettings()
+
     if not settings.enabled then
+        restoreOptions()
         return
     end
 
+    -- Render distance
     game.setOption(
         "renderDistance",
         settings.renderDistance
     )
 
+    -- FPS limit
     game.setOption(
         "framerateLimit",
         settings.fpsLimit
     )
 
-    game.setOption(
-        "viewBobbing",
-        not settings.disableViewBobbing
-            and game.option("viewBobbing")
-            or false
-    )
+    -- View bobbing
+    if settings.disableViewBobbing then
+        game.setOption("viewBobbing", false)
+    else
+        game.setOption(
+            "viewBobbing",
+            originalOptions.viewBobbing
+        )
+    end
 
+    -- FOV effects
     if settings.reducedFovEffects then
         game.setOption("fovEffects", 0)
+    else
+        game.setOption(
+            "fovEffects",
+            originalOptions.fovEffects
+        )
     end
 end
 
@@ -105,12 +153,15 @@ end
 -- ==========================================
 
 local function getFPSColor(fps)
+
     if fps < 30 then
-        return "#FF5555"
+        return "#FFFF5555"
+
     elseif fps < 60 then
-        return "#FFFF55"
+        return "#FFFFFF55"
+
     else
-        return "#55FF55"
+        return "#FF55FF55"
     end
 end
 
@@ -119,28 +170,52 @@ end
 -- ==========================================
 
 hud.add("sodium_hud", function(ctx)
+
     if not settings.enabled then
         return
     end
 
-    local fps = game.fps()
-
-    if settings.showBranding then
-        ctx:rect(4, 4, 132, 30, "#CC101820")
-        ctx:rect(4, 4, 2, 30, settings.hudColor)
-
-        ctx:text(
-            "SODIUM FPS",
-            11,
-            8,
-            settings.hudColor
-        )
+    if not settings.fpsHud
+        and not settings.showBranding then
+        return
     end
 
+    local fps = game.fps()
+    local hudColor = settings.hudColor
+
+    -- Branding background
+    if settings.showBranding then
+
+        ctx:rect(
+            4, 4,
+            132, 30,
+            "#CC101820"
+        )
+
+        ctx:rect(
+            4, 4,
+            2, 30,
+            hudColor
+        )
+
+        ctx:text(
+            "SODIUM",
+            11, 8,
+            hudColor
+        )
+
+    end
+
+    -- FPS counter
     if settings.fpsHud then
+
         local fpsText = tostring(fps) .. " FPS"
 
-        local y = settings.showBranding and 20 or 5
+        local y = 5
+
+        if settings.showBranding then
+            y = 20
+        end
 
         ctx:text(
             fpsText,
@@ -148,41 +223,56 @@ hud.add("sodium_hud", function(ctx)
             y,
             getFPSColor(fps)
         )
+
     end
+
 end)
 
 -- ==========================================
--- COMMANDS
+-- SODIUM COMMAND
 -- ==========================================
 
 commands.register(
     "sodium",
+
     function(args, raw)
+
         local action = args[1] or "info"
 
         if action == "on" then
+
             settings.enabled = true
             applySettings()
-            chat.print("Sodium enabled for gameplay!")
+
+            chat.print("Sodium enabled!")
 
         elseif action == "off" then
-            settings.enabled = false
-            chat.print("Sodium disabled for gameplay!")
 
-        elseif action == "settings" then
-            settings.open()
+            settings.enabled = false
+            applySettings()
+
+            chat.print("Sodium disabled!")
+            chat.print("Original game options restored.")
 
         elseif action == "fps" then
+
             chat.print(
-                "Browser FPS: " .. tostring(game.fps())
+                "Current FPS: " .. tostring(game.fps())
             )
 
+        elseif action == "settings" then
+
+            settings.open()
+
         elseif action == "apply" then
+
             applySettings()
-            chat.print("Sodium settings applied! Run Sodium using those settings.")
+
+            chat.print("Sodium settings applied!")
 
         elseif action == "info" then
-            chat.print("Sodium")
+
+            chat.print("Sodium Eagler Edition")
             chat.print("Version: " .. VERSION)
             chat.print("Game: " .. tostring(game.version))
             chat.print("/sodium on")
@@ -192,37 +282,58 @@ commands.register(
             chat.print("/sodium apply")
 
         else
+
             chat.print("Unknown Sodium command.")
+            chat.print("Use /sodium for help.")
+
         end
+
     end,
+
     "Sodium performance controls"
 )
 
 -- ==========================================
--- SETTING CHANGE HANDLER
+-- SETTINGS CHANGE HANDLER
 -- ==========================================
 
 settings.onChange(function(key, value, old)
-    if settings.enabled then
-        applySettings()
-    end
+
+    applySettings()
+
 end)
 
 -- ==========================================
--- MOD INITIALIZATION
+-- MOD EXPORTS
 -- ==========================================
 
-applySettings()
-
 mod.export = {
+
     version = VERSION,
+
     getFPS = function()
         return game.fps()
     end,
+
     isEnabled = function()
         return settings.enabled
+    end,
+
+    getRenderDistance = function()
+        return game.option("renderDistance")
+    end,
+
+    apply = function()
+        applySettings()
     end
+
 }
+
+-- ==========================================
+-- INITIALIZATION
+-- ==========================================
+
+applySettings()
 
 chat.print(
     "Sodium " .. VERSION .. " loaded!"
