@@ -130,7 +130,7 @@ hud.add("sodium_hud", function(ctx)
         ctx:rect(4, 4, 2, 30, settings.hudColor)
 
         ctx:text(
-            "SODIUM EAGLER",
+            "SODIUM FPS",
             11,
             8,
             settings.hudColor
@@ -163,23 +163,23 @@ commands.register(
         if action == "on" then
             settings.enabled = true
             applySettings()
-            chat.print("Sodium enabled!")
+            chat.print("Sodium enabled for gameplay!")
 
         elseif action == "off" then
             settings.enabled = false
-            chat.print("Sodium disabled!")
+            chat.print("Sodium disabled for gameplay!")
 
         elseif action == "settings" then
             settings.open()
 
         elseif action == "fps" then
             chat.print(
-                "Current FPS: " .. tostring(game.fps())
+                "Browser FPS: " .. tostring(game.fps())
             )
 
         elseif action == "apply" then
             applySettings()
-            chat.print("Sodium settings applied!")
+            chat.print("Sodium settings applied! Run Sodium using those settings.")
 
         elseif action == "info" then
             chat.print("Sodium")
