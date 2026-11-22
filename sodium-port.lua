@@ -1,16 +1,16 @@
 
 -- name: Sodium
 -- id: sodium
--- version: 0.3.3
+-- version: 0.3.6
 -- author: UserArham
--- description: FPS monitoring and performance optimization for Eaglercraft.
+-- description: FPS monitoring and optimization for Eaglercraft
 
 --------------------------------------------------
--- SODIUM v0.3.3
+-- SODIUM v0.3.6
 --------------------------------------------------
 
 local MOD_NAME = "Sodium"
-local MOD_VERSION = "0.3.3"
+local MOD_VERSION = "0.3.6"
 
 --------------------------------------------------
 -- SETTINGS
@@ -46,16 +46,6 @@ settings.toggle("adaptiveRenderDistance", {
     default = false
 })
 
-settings.toggle("reduceFov", {
-    label = "Reduce FOV effects",
-    default = false
-})
-
-settings.toggle("disableBobbing", {
-    label = "Disable view bobbing",
-    default = false
-})
-
 settings.slider("renderDistance", {
     label = "Target render distance",
     min = 2,
@@ -72,10 +62,37 @@ settings.slider("fpsLimit", {
     default = 260
 })
 
-settings.color("hudColor", {
-    label = "Branding color",
-    default = "#FFFFFF"
-})
+--------------------------------------------------
+-- STATE
+--------------------------------------------------
+
+local currentFPS = 0
+local displayedFPS = 0
+
+local minimumFPS = nil
+local maximumFPS = 0
+local totalFPS = 0
+local sampleCount = 0
+
+local performanceLog = {}
+local fpsHistory = {}
+
+local MAX_LOG_ENTRIES = 600
+local MAX_HISTORY = 48
+
+local lastSampleTime = os.clock()
+local adaptiveTimer = 0
+local adaptiveDistance = 12
+local autoOptimize = false
+
+local fpsBar = {
+    x = 8,
+    y = 8,
+    width = 184,
+    height = 112,
+    maxFPS = 260,
+    compact = false
+}
 
 --------------------------------------------------
 -- SETTINGS HELPERS
@@ -94,30 +111,6 @@ end
 local function isEnabled()
     return getSetting("enabled", true)
 end
-
---------------------------------------------------
--- FPS DATA
---------------------------------------------------
-
-local currentFPS = 0
-local displayedFPS = 0
-
-local minimumFPS = nil
-local maximumFPS = 0
-local totalFPS = 0
-local sampleCount = 0
-
-local performanceLog = {}
-local MAX_LOG_ENTRIES = 600
-
-local lastSampleTime = os.clock()
-local adaptiveTimer = 0
-
-local autoOptimize = false
-local adaptiveDistance = 12
-
-local fpsHistory = {}
-local MAX_HISTORY = 48
 
 --------------------------------------------------
 -- FPS COLORS
@@ -152,7 +145,7 @@ local function getFPSStatus(fps)
 end
 
 --------------------------------------------------
--- FPS STATISTICS
+-- STATISTICS
 --------------------------------------------------
 
 local function getAverageFPS()
@@ -172,7 +165,7 @@ local function getMaximumFPS()
 end
 
 --------------------------------------------------
--- PERFORMANCE HISTORY
+-- HISTORY
 --------------------------------------------------
 
 local function addHistory(fps)
@@ -184,7 +177,7 @@ local function addHistory(fps)
 end
 
 --------------------------------------------------
--- PERFORMANCE SAMPLING
+-- RECORD FPS
 --------------------------------------------------
 
 local function recordFPS()
@@ -200,10 +193,8 @@ local function recordFPS()
     totalFPS = totalFPS + fps
     sampleCount = sampleCount + 1
 
-    local timestamp = os.date("%Y-%m-%d %H:%M:%S")
-
     table.insert(performanceLog, {
-        time = timestamp,
+        time = os.date("%Y-%m-%d %H:%M:%S"),
         fps = fps
     })
 
@@ -252,27 +243,27 @@ local function refreshFPS()
 end
 
 --------------------------------------------------
--- PERFORMANCE TXT EXPORT
+-- TXT EXPORT
 --------------------------------------------------
 
 local function exportPerformanceLog()
-    local lines = {}
-
-    table.insert(lines, "================================")
-    table.insert(lines, "         SODIUM LOG")
-    table.insert(lines, "================================")
-    table.insert(lines, "Version: " .. MOD_VERSION)
-    table.insert(lines, "Date: " .. os.date("%Y-%m-%d %H:%M:%S"))
-    table.insert(lines, "")
-    table.insert(lines, "PERFORMANCE STATISTICS")
-    table.insert(lines, "Current FPS: " .. currentFPS)
-    table.insert(lines, "Minimum FPS: " .. getMinimumFPS())
-    table.insert(lines, "Average FPS: " .. getAverageFPS())
-    table.insert(lines, "Maximum FPS: " .. getMaximumFPS())
-    table.insert(lines, "Samples: " .. sampleCount)
-    table.insert(lines, "")
-    table.insert(lines, "FPS HISTORY")
-    table.insert(lines, "--------------------------------")
+    local lines = {
+        "================================",
+        "          SODIUM LOG",
+        "================================",
+        "Version: " .. MOD_VERSION,
+        "Date: " .. os.date("%Y-%m-%d %H:%M:%S"),
+        "",
+        "PERFORMANCE STATISTICS",
+        "Current FPS: " .. currentFPS,
+        "Minimum FPS: " .. getMinimumFPS(),
+        "Average FPS: " .. getAverageFPS(),
+        "Maximum FPS: " .. getMaximumFPS(),
+        "Samples: " .. sampleCount,
+        "",
+        "FPS HISTORY",
+        "--------------------------------"
+    }
 
     for _, entry in ipairs(performanceLog) do
         table.insert(
@@ -290,7 +281,7 @@ local function exportPerformanceLog()
         "text/plain"
     )
 
-    chat.print("[Sodium] TXT performance log downloaded.")
+    chat.print("[Sodium] TXT log exported.")
 end
 
 --------------------------------------------------
@@ -310,6 +301,7 @@ end
 
 local function showPerformanceStatus()
     chat.print("----- Sodium Performance -----")
+    chat.print("Version: " .. MOD_VERSION)
     chat.print("Current FPS: " .. currentFPS)
     chat.print("Minimum FPS: " .. getMinimumFPS())
     chat.print("Average FPS: " .. getAverageFPS())
@@ -320,11 +312,11 @@ local function showPerformanceStatus()
 end
 
 --------------------------------------------------
--- GAME OPTION HELPER
+-- GAME OPTIONS
 --------------------------------------------------
 
 local function setGameOption(name, value)
-    local ok, err = pcall(function()
+    local ok = pcall(function()
         game.setOption(name, value)
     end)
 
@@ -362,9 +354,8 @@ local function applyPreset(name)
     elseif name == "apply" then
         distance = getSetting("renderDistance", 12)
         limit = getSetting("fpsLimit", 260)
-        bobbing = not getSetting("disableBobbing", false)
-
-        fovEffects = getSetting("reduceFov", false) and 0 or 1
+        bobbing = true
+        fovEffects = 1
 
     else
         chat.print("[Sodium] Unknown preset.")
@@ -379,8 +370,6 @@ local function applyPreset(name)
     adaptiveDistance = distance
 
     chat.print("[Sodium] " .. name .. " preset applied.")
-    chat.print("[Sodium] Render distance: " .. distance)
-    chat.print("[Sodium] FPS limit: " .. limit)
 end
 
 --------------------------------------------------
@@ -407,10 +396,6 @@ local function updateAdaptiveRenderDistance()
         return
     end
 
-    if not game.inWorld() then
-        return
-    end
-
     local newDistance = adaptiveDistance
 
     if currentFPS < 25 then
@@ -426,10 +411,6 @@ local function updateAdaptiveRenderDistance()
         setGameOption("renderDistance", newDistance)
     end
 end
-
---------------------------------------------------
--- AUTOMATIC OPTIMIZATION
---------------------------------------------------
 
 local function updateAutomaticOptimization()
     if not autoOptimize then
@@ -448,69 +429,47 @@ local function updateAutomaticOptimization()
 end
 
 --------------------------------------------------
--- FPS BAR CONFIGURATION
+-- FPS BAR DRAWING
+-- PRESERVED FROM SODIUM 0.3.3-0.3.4
 --------------------------------------------------
 
-local fpsBar = {
-    x = 8,
-    y = 8,
-    width = 184,
-    height = 72,
-    maxFPS = 260,
-    enabled = true,
-    compact = false
-}
-
---------------------------------------------------
--- DRAW FPS BAR BACKGROUND
---------------------------------------------------
-
-local function drawPanel(ctx, x, y, w, h)
-    -- Outer shadow
+local function drawPanel(ctx, x, y, width, height)
     ctx:rect(
         x + 2,
         y + 3,
-        w,
-        h,
+        width,
+        height,
         "#70000000"
     )
 
-    -- Main panel
     ctx:gradient(
         x,
         y,
-        x + w,
-        y + h,
+        x + width,
+        y + height,
         "#F0192435",
         "#E90B1220"
     )
 
-    -- Border
     ctx:outline(
         x,
         y,
-        w,
-        h,
+        width,
+        height,
         "#526783"
     )
 
-    -- Top highlight
     ctx:rect(
         x + 1,
         y + 1,
-        w - 2,
+        width - 2,
         1,
         "#806FA6D8"
     )
 end
 
---------------------------------------------------
--- DRAW FPS BAR
---------------------------------------------------
-
 local function drawFPSBar(ctx, x, y, width, height)
-    local fps = math.max(0, currentFPS)
-    local color = getFPSColor(fps)
+    local color = getFPSColor(currentFPS)
 
     local ratio = math.min(
         1,
@@ -519,26 +478,14 @@ local function drawFPSBar(ctx, x, y, width, height)
 
     local fillWidth = math.floor(width * ratio)
 
-    -- Bar shadow
     ctx:rect(
         x,
-        y + 1,
+        y,
         width,
         height,
-        "#AA000000"
+        "#FF111827"
     )
 
-    -- Dark track
-    ctx:gradient(
-        x,
-        y,
-        x + width,
-        y + height,
-        "#FF111827",
-        "#FF263449"
-    )
-
-    -- Colored glow layers
     if fillWidth > 0 then
         ctx:rect(
             x,
@@ -548,7 +495,6 @@ local function drawFPSBar(ctx, x, y, width, height)
             "#263399FF"
         )
 
-        -- Main colored fill
         ctx:gradient(
             x,
             y,
@@ -558,7 +504,6 @@ local function drawFPSBar(ctx, x, y, width, height)
             color
         )
 
-        -- Bright upper highlight
         ctx:rect(
             x,
             y,
@@ -568,9 +513,8 @@ local function drawFPSBar(ctx, x, y, width, height)
         )
     end
 
-    -- Scale marks
     for i = 1, 4 do
-        local markX = x + (width * i / 5)
+        local markX = x + width * i / 5
 
         ctx:rect(
             markX,
@@ -581,7 +525,6 @@ local function drawFPSBar(ctx, x, y, width, height)
         )
     end
 
-    -- Border
     ctx:outline(
         x,
         y,
@@ -592,7 +535,8 @@ local function drawFPSBar(ctx, x, y, width, height)
 end
 
 --------------------------------------------------
--- DRAW FPS HISTORY GRAPH
+-- FPS HISTORY GRAPH
+-- PRESERVED FROM SODIUM 0.3.3-0.3.4
 --------------------------------------------------
 
 local function drawHistoryGraph(ctx, x, y, width, height)
@@ -619,6 +563,7 @@ local function drawHistoryGraph(ctx, x, y, width, height)
             y + 5,
             "#94A3B8"
         )
+
         return
     end
 
@@ -652,41 +597,21 @@ local function drawHistoryGraph(ctx, x, y, width, height)
 end
 
 --------------------------------------------------
--- DRAW STATISTIC CARD
+-- STATISTICS DRAWING
 --------------------------------------------------
 
 local function drawStat(ctx, label, value, x, y, color)
-    ctx:text(
-        label,
-        x,
-        y,
-        "#91A3BA"
-    )
-
-    ctx:text(
-        tostring(value),
-        x,
-        y + 11,
-        color
-    )
+    ctx:text(label, x, y, "#91A3BA")
+    ctx:text(tostring(value), x, y + 11, color)
 end
 
 --------------------------------------------------
--- MAIN FPS HUD
+-- MAIN HUD
+-- LAYOUT AND DRAWING PRESERVED
 --------------------------------------------------
 
 hud.add("sodium_main_hud", function(ctx)
-    if not isEnabled() then
-        return
-    end
-
-    if not game.inWorld() then
-        return
-    end
-
-    if not getSetting("fpsHud", true)
-        and not getSetting("showBranding", true)
-        and not getSetting("fpsBar", true) then
+    if not isEnabled() or not game.inWorld() then
         return
     end
 
@@ -694,16 +619,9 @@ hud.add("sodium_main_hud", function(ctx)
     local y = fpsBar.y
     local width = fpsBar.width
 
-    local fps = currentFPS
-    local color = getFPSColor(fps)
+    local color = getFPSColor(currentFPS)
 
-    --------------------------------------------------
-    -- COMPACT MODE
-    --------------------------------------------------
-
-    if fpsBar.compact
-        or not getSetting("expandedHud", true) then
-
+    if fpsBar.compact or not getSetting("expandedHud", true) then
         drawPanel(ctx, x, y, width, 34)
 
         if getSetting("showBranding", true) then
@@ -711,13 +629,13 @@ hud.add("sodium_main_hud", function(ctx)
                 "SODIUM",
                 x + 8,
                 y + 6,
-                getSetting("hudColor", "#FFFFFF")
+                "#FFFFFF"
             )
         end
 
         if getSetting("fpsHud", true) then
             ctx:text(
-                tostring(fps) .. " FPS",
+                tostring(currentFPS) .. " FPS",
                 x + 83,
                 y + 6,
                 color
@@ -725,50 +643,17 @@ hud.add("sodium_main_hud", function(ctx)
         end
 
         if getSetting("fpsBar", true) then
-            drawFPSBar(
-                ctx,
-                x + 8,
-                y + 23,
-                width - 16,
-                5
-            )
+            drawFPSBar(ctx, x + 8, y + 23, width - 16, 5)
         end
 
         return
     end
 
-    --------------------------------------------------
-    -- EXPANDED MODE
-    --------------------------------------------------
-
-    local panelHeight = 112
-
-    drawPanel(
-        ctx,
-        x,
-        y,
-        width,
-        panelHeight
-    )
-
-    --------------------------------------------------
-    -- HEADER
-    --------------------------------------------------
+    drawPanel(ctx, x, y, width, 112)
 
     if getSetting("showBranding", true) then
-        ctx:text(
-            "SODIUM",
-            x + 9,
-            y + 7,
-            getSetting("hudColor", "#FFFFFF")
-        )
-
-        ctx:text(
-            "PERFORMANCE",
-            x + 66,
-            y + 7,
-            "#8EA4C1"
-        )
+        ctx:text("SODIUM", x + 9, y + 7, "#FFFFFF")
+        ctx:text("PERFORMANCE", x + 66, y + 7, "#8EA4C1")
     end
 
     ctx:circle(
@@ -778,89 +663,33 @@ hud.add("sodium_main_hud", function(ctx)
         "#55DD55"
     )
 
-    --------------------------------------------------
-    -- MAIN FPS NUMBER
-    --------------------------------------------------
-
     if getSetting("fpsHud", true) then
         ctx:text(
-            tostring(fps),
+            tostring(currentFPS),
             x + 9,
             y + 23,
             color
         )
 
-        ctx:text(
-            "FPS",
-            x + 49,
-            y + 29,
-            "#B7C7D9"
-        )
+        ctx:text("FPS", x + 49, y + 29, "#B7C7D9")
 
         ctx:text(
-            getFPSStatus(fps),
+            getFPSStatus(currentFPS),
             x + width - 64,
             y + 29,
             color
         )
     end
 
-    --------------------------------------------------
-    -- FPS BAR
-    --------------------------------------------------
-
     if getSetting("fpsBar", true) then
-        drawFPSBar(
-            ctx,
-            x + 9,
-            y + 44,
-            width - 18,
-            9
-        )
+        drawFPSBar(ctx, x + 9, y + 44, width - 18, 9)
     end
 
-    --------------------------------------------------
-    -- STATISTICS
-    --------------------------------------------------
+    drawStat(ctx, "MIN", getMinimumFPS(), x + 10, y + 61, "#FF8800")
+    drawStat(ctx, "AVG", getAverageFPS(), x + 69, y + 61, "#55DD55")
+    drawStat(ctx, "MAX", getMaximumFPS(), x + 130, y + 61, "#3399FF")
 
-    drawStat(
-        ctx,
-        "MIN",
-        getMinimumFPS(),
-        x + 10,
-        y + 61,
-        "#FF8800"
-    )
-
-    drawStat(
-        ctx,
-        "AVG",
-        getAverageFPS(),
-        x + 69,
-        y + 61,
-        "#55DD55"
-    )
-
-    drawStat(
-        ctx,
-        "MAX",
-        getMaximumFPS(),
-        x + 130,
-        y + 61,
-        "#3399FF"
-    )
-
-    --------------------------------------------------
-    -- HISTORY GRAPH
-    --------------------------------------------------
-
-    drawHistoryGraph(
-        ctx,
-        x + 9,
-        y + 86,
-        width - 18,
-        17
-    )
+    drawHistoryGraph(ctx, x + 9, y + 86, width - 18, 17)
 end)
 
 --------------------------------------------------
@@ -913,178 +742,258 @@ on("tick", function()
 end)
 
 --------------------------------------------------
--- /PERFORMANCE
+-- COMMAND SYSTEM
+-- SODIUM 0.3.6
+-- MAIN COMMAND: /lithium
 --------------------------------------------------
 
-commands.register("performance", function(args)
-    local action = args[1] or "status"
+local function normalize(value)
+    if value == nil then
+        return ""
+    end
 
-    if action == "log" then
-        exportPerformanceLog()
+    return tostring(value)
+        :lower()
+        :match("^%s*(.-)%s*$")
+end
 
-    elseif action == "clear" then
-        clearPerformanceLog()
+--------------------------------------------------
+-- HELP
+--------------------------------------------------
 
-    elseif action == "status" then
-        showPerformanceStatus()
+local function showSodiumHelp()
+    chat.print("===== SODIUM 0.3.6 COMMANDS =====")
+    chat.print("/lithium help")
+    chat.print("/lithium commands")
+    chat.print("/lithium sodium on|off|settings|version|apply")
+    chat.print("/lithium performance log|clear|status")
+    chat.print("/lithium performance auto on|off")
+    chat.print("/lithium optimize apply|low|balanced|high|reset|status")
+    chat.print("/lithium fpsbar on|off|compact|expanded|reset|status")
+    chat.print("/lithium refresh fps")
+    chat.print("=================================")
+end
 
-    elseif action == "auto" then
-        if args[2] == "on" then
-            autoOptimize = true
-            chat.print("[Sodium] Automatic optimization enabled.")
+local function showRegisteredCommands()
+    chat.print("===== SODIUM COMMANDS =====")
+    chat.print("/lithium")
+    chat.print("/lithium help")
+    chat.print("/lithium commands")
+    chat.print("/lithium sodium")
+    chat.print("/lithium performance")
+    chat.print("/lithium optimize")
+    chat.print("/lithium fpsbar")
+    chat.print("/lithium refresh")
+    chat.print("===========================")
+end
 
-        elseif args[2] == "off" then
-            autoOptimize = false
-            chat.print("[Sodium] Automatic optimization disabled.")
+--------------------------------------------------
+-- MAIN COMMAND DISPATCHER
+--------------------------------------------------
+
+commands.register("lithium", function(args)
+    local category = normalize(args[1])
+    local action = normalize(args[2])
+    local argument = normalize(args[3])
+
+    if category == "" or category == "help" then
+        showSodiumHelp()
+        return
+    end
+
+    if category == "commands" then
+        showRegisteredCommands()
+        return
+    end
+
+    --------------------------------------------------
+    -- SODIUM
+    --------------------------------------------------
+
+    if category == "sodium" then
+        if action == "on" then
+            settings.set("enabled", true)
+            chat.print("[Sodium] Enabled.")
+
+        elseif action == "off" then
+            settings.set("enabled", false)
+            chat.print("[Sodium] Disabled.")
+
+        elseif action == "settings" then
+            settings.open()
+
+        elseif action == "version" then
+            chat.print("Sodium " .. MOD_VERSION)
+
+        elseif action == "apply" then
+            applyPreset("apply")
+
+        elseif action == "help" then
+            chat.print("/lithium sodium on")
+            chat.print("/lithium sodium off")
+            chat.print("/lithium sodium settings")
+            chat.print("/lithium sodium version")
+            chat.print("/lithium sodium apply")
 
         else
-            chat.print("Usage: /performance auto on|off")
+            chat.print("[Sodium] Unknown sodium command.")
+            chat.print("Use /lithium sodium help")
         end
 
-    else
-        chat.print("/performance log")
-        chat.print("/performance clear")
-        chat.print("/performance status")
-        chat.print("/performance auto on|off")
+        return
     end
-end, "Sodium performance commands")
 
---------------------------------------------------
--- /REFRESH
---------------------------------------------------
+    --------------------------------------------------
+    -- PERFORMANCE
+    --------------------------------------------------
 
-commands.register("refresh", function(args)
-    if args[1] == "fps" then
-        refreshFPS()
-    else
-        chat.print("Usage: /refresh fps")
+    if category == "performance" then
+        if action == "log" then
+            exportPerformanceLog()
+
+        elseif action == "clear" then
+            clearPerformanceLog()
+
+        elseif action == "status" or action == "" then
+            showPerformanceStatus()
+
+        elseif action == "auto" then
+            if argument == "on" then
+                autoOptimize = true
+                chat.print("[Sodium] Auto optimization enabled.")
+
+            elseif argument == "off" then
+                autoOptimize = false
+                chat.print("[Sodium] Auto optimization disabled.")
+
+            else
+                chat.print("Usage: /lithium performance auto on|off")
+            end
+
+        elseif action == "help" then
+            chat.print("/lithium performance log")
+            chat.print("/lithium performance clear")
+            chat.print("/lithium performance status")
+            chat.print("/lithium performance auto on|off")
+
+        else
+            chat.print("[Sodium] Unknown performance command.")
+        end
+
+        return
     end
-end, "Refresh FPS measurements")
 
---------------------------------------------------
--- /OPTIMIZE
---------------------------------------------------
+    --------------------------------------------------
+    -- OPTIMIZE
+    --------------------------------------------------
 
-commands.register("optimize", function(args)
-    local action = args[1] or "status"
+    if category == "optimize" then
+        if action == "apply" then
+            applyPreset("apply")
 
-    if action == "apply" then
-        applyPreset("apply")
+        elseif action == "low" then
+            applyPreset("low")
 
-    elseif action == "low" then
-        applyPreset("low")
+        elseif action == "balanced" then
+            applyPreset("balanced")
 
-    elseif action == "balanced" then
-        applyPreset("balanced")
+        elseif action == "high" then
+            applyPreset("high")
 
-    elseif action == "high" then
-        applyPreset("high")
+        elseif action == "reset" then
+            resetOptimizations()
 
-    elseif action == "reset" then
-        resetOptimizations()
+        elseif action == "status" or action == "" then
+            chat.print("Render distance: " ..
+                tostring(game.option("renderDistance")))
+            chat.print("FPS limit: " ..
+                tostring(game.option("framerateLimit")))
 
-    elseif action == "status" then
-        chat.print("----- Sodium Options -----")
-        chat.print("Render distance: " ..
-            tostring(game.option("renderDistance")))
-        chat.print("FPS limit: " ..
-            tostring(game.option("framerateLimit")))
-        chat.print("View bobbing: " ..
-            tostring(game.option("viewBobbing")))
-        chat.print("--------------------------")
+        elseif action == "help" then
+            chat.print("/lithium optimize apply")
+            chat.print("/lithium optimize low")
+            chat.print("/lithium optimize balanced")
+            chat.print("/lithium optimize high")
+            chat.print("/lithium optimize reset")
 
-    else
-        chat.print("/optimize apply")
-        chat.print("/optimize low")
-        chat.print("/optimize balanced")
-        chat.print("/optimize high")
-        chat.print("/optimize reset")
-        chat.print("/optimize status")
+        else
+            chat.print("[Sodium] Unknown optimization command.")
+        end
+
+        return
     end
-end, "Sodium optimization presets")
 
---------------------------------------------------
--- /FPSBAR
---------------------------------------------------
+    --------------------------------------------------
+    -- FPS BAR
+    --------------------------------------------------
 
-commands.register("fpsbar", function(args)
-    local action = args[1] or "status"
+    if category == "fpsbar" then
+        if action == "on" then
+            settings.set("fpsBar", true)
+            chat.print("[Sodium] FPS bar enabled.")
 
-    if action == "on" then
-        settings.set("fpsBar", true)
-        chat.print("[Sodium] FPS bar enabled.")
+        elseif action == "off" then
+            settings.set("fpsBar", false)
+            chat.print("[Sodium] FPS bar disabled.")
 
-    elseif action == "off" then
-        settings.set("fpsBar", false)
-        chat.print("[Sodium] FPS bar disabled.")
+        elseif action == "compact" then
+            fpsBar.compact = true
+            chat.print("[Sodium] Compact HUD enabled.")
 
-    elseif action == "compact" then
-        fpsBar.compact = true
-        chat.print("[Sodium] Compact HUD enabled.")
+        elseif action == "expanded" then
+            fpsBar.compact = false
+            chat.print("[Sodium] Expanded HUD enabled.")
 
-    elseif action == "expanded" then
-        fpsBar.compact = false
-        chat.print("[Sodium] Expanded HUD enabled.")
+        elseif action == "reset" then
+            fpsBar.x = 8
+            fpsBar.y = 8
+            fpsBar.width = 184
+            fpsBar.height = 112
+            fpsBar.maxFPS = 260
+            fpsBar.compact = false
 
-    elseif action == "reset" then
-        fpsBar.x = 8
-        fpsBar.y = 8
-        fpsBar.width = 184
-        fpsBar.height = 72
-        fpsBar.maxFPS = 260
-        fpsBar.compact = false
+            chat.print("[Sodium] FPS bar reset.")
 
-        chat.print("[Sodium] FPS bar layout reset.")
+        elseif action == "status" or action == "" then
+            chat.print("FPS bar: " ..
+                tostring(getSetting("fpsBar", true)))
+            chat.print("Compact: " .. tostring(fpsBar.compact))
 
-    elseif action == "status" then
-        chat.print("FPS bar: " ..
-            tostring(getSetting("fpsBar", true)))
-        chat.print("Compact mode: " ..
-            tostring(fpsBar.compact))
-        chat.print("Maximum scale: " .. fpsBar.maxFPS)
+        elseif action == "help" then
+            chat.print("/lithium fpsbar on")
+            chat.print("/lithium fpsbar off")
+            chat.print("/lithium fpsbar compact")
+            chat.print("/lithium fpsbar expanded")
+            chat.print("/lithium fpsbar reset")
 
-    else
-        chat.print("/fpsbar on")
-        chat.print("/fpsbar off")
-        chat.print("/fpsbar compact")
-        chat.print("/fpsbar expanded")
-        chat.print("/fpsbar reset")
-        chat.print("/fpsbar status")
+        else
+            chat.print("[Sodium] Unknown FPS bar command.")
+        end
+
+        return
     end
-end, "Sodium FPS HUD controls")
 
---------------------------------------------------
--- /SODIUM
---------------------------------------------------
+    --------------------------------------------------
+    -- REFRESH
+    --------------------------------------------------
 
-commands.register("sodium", function(args)
-    local action = args[1] or "settings"
+    if category == "refresh" then
+        if action == "fps" then
+            refreshFPS()
+        else
+            chat.print("Usage: /lithium refresh fps")
+        end
 
-    if action == "on" then
-        settings.set("enabled", true)
-        chat.print("[Sodium] Enabled.")
-
-    elseif action == "off" then
-        settings.set("enabled", false)
-        chat.print("[Sodium] Disabled.")
-
-    elseif action == "settings" then
-        settings.open()
-
-    elseif action == "apply" then
-        applyPreset("apply")
-
-    elseif action == "version" then
-        chat.print("Sodium " .. MOD_VERSION)
-
-    else
-        chat.print("/sodium on")
-        chat.print("/sodium off")
-        chat.print("/sodium settings")
-        chat.print("/sodium apply")
-        chat.print("/sodium version")
+        return
     end
-end, "Sodium main commands")
+
+    --------------------------------------------------
+    -- UNKNOWN COMMAND
+    --------------------------------------------------
+
+    chat.print("[Sodium] Unknown command: " .. category)
+    chat.print("Use /lithium help")
+end, "Sodium command dispatcher")
 
 --------------------------------------------------
 -- SETTINGS CHANGES
@@ -1103,7 +1012,7 @@ settings.onChange(function(key, value)
 end)
 
 --------------------------------------------------
--- MOD EXPORT
+-- EXPORT
 --------------------------------------------------
 
 mod.export = {
@@ -1145,4 +1054,5 @@ end
 lastSampleTime = os.clock()
 
 chat.print("[Sodium] v" .. MOD_VERSION .. " loaded.")
-chat.print("[Sodium] Enhanced FPS HUD initialized.")
+chat.print("[Sodium] Main command: /lithium")
+chat.print("[Sodium] Type /lithium help")
